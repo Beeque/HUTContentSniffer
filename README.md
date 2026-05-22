@@ -32,10 +32,16 @@ cp config.example.env .env
 python3 sniff.py --init
 ```
 
-4. Optional: test email delivery:
+4. Optional: test email delivery (SMTP only, no forum fetch needed):
 
 ```bash
 python3 sniff.py --test-email
+```
+
+If forum parsing fails, use debug mode:
+
+```bash
+python3 sniff.py --debug --dry-run
 ```
 
 ## Crontab
@@ -58,7 +64,8 @@ Example: check every 15 minutes.
 
 ```bash
 python3 sniff.py            # normal check
-python3 sniff.py --init     # reset baseline without email
+python3 sniff.py --init     # reset baseline without email (run after filter changes)
 python3 sniff.py --dry-run  # detect new posts, skip email
+python3 sniff.py --debug    # show parse stats if forum HTML looks wrong
 python3 sniff.py --test-email
 ```

@@ -97,14 +97,42 @@ def fetch_forum_html():
     request = Request(
         FORUM_URL,
         headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml",
+            "User-Agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache",
         },
     )
     with urlopen(request, timeout=45) as response:
         charset = response.headers.get_content_charset() or "utf-8"
         return response.read().decode(charset, errors="replace")
+
+
+def debug_parse_stats(html):
+    li_items = LI_RE.findall(html)
+    href_matches = 0
+    content_title_matches = 0
+    manager_matches = 0
+
+    for chunk in li_items:
+        if not POST_HREF_RE.search(chunk):
+            continue
+        href_matches += 1
+        title_match = TITLE_RE.search(chunk)
+        title = strip_html(title_match.group(1)) if title_match else ""
+        if "Content" in title:
+            content_title_matches += 1
+        if COMMUNITY_MANAGER_RE.search(chunk):
+            manager_matches += 1
+
+    log("Debug: html_bytes={}".format(len(html)))
+    log("Debug: panel_list_items={}".format(len(li_items)))
+    log("Debug: hut_posts={}".format(href_matches))
+    log("Debug: title_has_Content={}".format(content_title_matches))
+    log("Debug: community_manager={}".format(manager_matches))
 
 
 def parse_posts(html):
@@ -139,7 +167,7 @@ def parse_posts(html):
     return posts
 
 
-def send_email(posts):
+def send_email(posts, test_mode=False):
     notify_to = env("NOTIFY_EMAIL")
     smtp_host = env("SMTP_HOST")
     smtp_port = int(env("SMTP_PORT", "587"))
@@ -162,21 +190,33 @@ def send_email(posts):
     if missing:
         raise RuntimeError("Missing email config: {}".format(", ".join(missing)))
 
-    if len(posts) == 1:
+    if test_mode:
+        subject = "HUTContentSniffer test email"
+    elif len(posts) == 1:
         subject = "EA HUT Content: {}".format(posts[0]["title"])
     else:
         subject = "EA HUT Content: {} new posts".format(len(posts))
 
-    lines = [
-        "New HUT Content post(s) on EA forum:",
-        "",
-        FORUM_URL,
-        "",
-    ]
-    for post in posts:
-        lines.append("- {}".format(post["title"]))
-        lines.append("  {}".format(post["url"]))
-        lines.append("")
+    if test_mode:
+        lines = [
+            "This is a test message from HUTContentSniffer.",
+            "",
+            "SMTP settings look OK.",
+            "",
+            "Monitored forum:",
+            FORUM_URL,
+        ]
+    else:
+        lines = [
+            "New HUT Content post(s) on EA forum:",
+            "",
+            FORUM_URL,
+            "",
+        ]
+        for post in posts:
+            lines.append("- {}".format(post["title"]))
+            lines.append("  {}".format(post["url"]))
+            lines.append("")
 
     message = EmailMessage()
     message["Subject"] = subject
@@ -197,8 +237,21 @@ def send_email(posts):
             smtp.send_message(message)
 
 
-def run(init_only=False, test_email=False, dry_run=False):
+def run(init_only=False, test_email=False, dry_run=False, debug=False):
     load_dotenv(ENV_FILE)
+
+    if test_email:
+        log("Sending test email to {} via {}".format(
+            env("NOTIFY_EMAIL", "(not set)"),
+            env("SMTP_HOST", "(not set)"),
+        ))
+        try:
+            send_email([], test_mode=True)
+            log("Test email sent.")
+            return 0
+        except Exception as exc:
+            log("Test email failed: {}".format(exc))
+            return 1
 
     try:
         html = fetch_forum_html()
@@ -209,6 +262,8 @@ def run(init_only=False, test_email=False, dry_run=False):
     posts = parse_posts(html)
     if not posts:
         log("No matching Content posts from Community Manager found.")
+        if debug:
+            debug_parse_stats(html)
         return 1
 
     newest_id = posts[0]["id"]
@@ -222,13 +277,6 @@ def run(init_only=False, test_email=False, dry_run=False):
             len(posts), newest_id, last_seen_id
         )
     )
-
-    if test_email:
-        sample = new_posts or posts[:1]
-        log("Sending test email about: {}".format(sample[0]["title"]))
-        send_email(sample)
-        log("Test email sent.")
-        return 0
 
     if not state or init_only:
         save_state(
@@ -271,15 +319,25 @@ def main():
     parser.add_argument(
         "--test-email",
         action="store_true",
-        help="Send one test email using current/newest post as sample content.",
+        help="Send a test email to verify SMTP settings (does not use forum data).",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Detect new posts but do not send email.",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print parse diagnostics when no matching posts are found.",
+    )
     args = parser.parse_args()
-    return run(init_only=args.init, test_email=args.test_email, dry_run=args.dry_run)
+    return run(
+        init_only=args.init,
+        test_email=args.test_email,
+        dry_run=args.dry_run,
+        debug=args.debug,
+    )
 
 
 if __name__ == "__main__":
