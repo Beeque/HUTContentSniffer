@@ -8,10 +8,12 @@ https://forums.ea.com/category/nhl-26-en/discussions/nhl-26-ultimate-team-en?mes
 
 ## Requirements
 
-Python **3.6+**. On Linux, use `python3` (not `python`, which is often Python 2).
+Python **3.6+**. On Linux, **`python` is often Python 2** — do not use it.
 
 ```bash
 python3 --version
+chmod +x sniff
+./sniff --init
 ```
 
 ## Setup
@@ -41,7 +43,7 @@ python3 sniff.py --test-email
 Example: check every 15 minutes.
 
 ```cron
-*/15 * * * * cd /path/to/HUTContentSniffer && /usr/bin/python3 sniff.py >> sniff.log 2>&1
+*/15 * * * * cd /home/bq/HUTContentSniffer && ./sniff >> sniff.log 2>&1
 ```
 
 ## How it works

@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """Check EA NHL 26 HUT forum for new posts and send email alerts."""
 
+import sys
+
+if sys.version_info[0] < 3:
+    sys.stderr.write("This script requires Python 3. Run: python3 sniff.py\n")
+    sys.exit(1)
+if sys.version_info < (3, 6):
+    sys.stderr.write("HUTContentSniffer requires Python 3.6+. Run: python3 sniff.py\n")
+    sys.exit(1)
+
 import argparse
 import json
 import os
 import re
 import smtplib
 import ssl
-import sys
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
-
-if sys.version_info < (3, 6):
-    sys.stderr.write("HUTContentSniffer requires Python 3.6+. Run: python3 sniff.py\n")
-    sys.exit(1)
 
 FORUM_URL = (
     "https://forums.ea.com/category/nhl-26-en/discussions/nhl-26-ultimate-team-en"
@@ -40,7 +44,8 @@ TITLE_RE = re.compile(
 
 def log(message):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    print("[{}] {}".format(ts, message), flush=True)
+    sys.stdout.write("[{}] {}\n".format(ts, message))
+    sys.stdout.flush()
 
 
 def load_dotenv(path):
