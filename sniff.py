@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Check EA NHL 26 HUT forum for new posts and send email alerts."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -15,6 +13,10 @@ from email.message import EmailMessage
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+if sys.version_info < (3, 6):
+    sys.stderr.write("HUTContentSniffer requires Python 3.6+. Run: python3 sniff.py\n")
+    sys.exit(1)
 
 FORUM_URL = (
     "https://forums.ea.com/category/nhl-26-en/discussions/nhl-26-ultimate-team-en"
@@ -36,12 +38,12 @@ TITLE_RE = re.compile(
 )
 
 
-def log(message: str) -> None:
+def log(message):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    print(f"[{ts}] {message}", flush=True)
+    print("[{}] {}".format(ts, message), flush=True)
 
 
-def load_dotenv(path: Path) -> None:
+def load_dotenv(path):
     if not path.is_file():
         return
     for raw_line in path.read_text(encoding="utf-8").splitlines():
@@ -55,7 +57,7 @@ def load_dotenv(path: Path) -> None:
             os.environ[key] = value
 
 
-def env(name: str, default: str | None = None) -> str | None:
+def env(name, default=None):
     value = os.environ.get(name, default)
     if value is None:
         return None
@@ -63,21 +65,21 @@ def env(name: str, default: str | None = None) -> str | None:
     return value or None
 
 
-def load_state() -> dict:
+def load_state():
     if not STATE_FILE.is_file():
         return {}
     return json.loads(STATE_FILE.read_text(encoding="utf-8"))
 
 
-def save_state(state: dict) -> None:
+def save_state(state):
     STATE_FILE.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
 
 
-def strip_html(text: str) -> str:
+def strip_html(text):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
 
 
-def fetch_forum_html() -> str:
+def fetch_forum_html():
     request = Request(
         FORUM_URL,
         headers={
@@ -91,9 +93,9 @@ def fetch_forum_html() -> str:
         return response.read().decode(charset, errors="replace")
 
 
-def parse_posts(html: str) -> list[dict]:
-    posts: list[dict] = []
-    seen_ids: set[int] = set()
+def parse_posts(html):
+    posts = []
+    seen_ids = set()
 
     for match in LI_RE.finditer(html):
         chunk = match.group(1)
@@ -113,7 +115,7 @@ def parse_posts(html: str) -> list[dict]:
             {
                 "id": post_id,
                 "title": title,
-                "url": f"{BASE_URL}{path}",
+                "url": "{}{}".format(BASE_URL, path),
             }
         )
 
@@ -121,7 +123,7 @@ def parse_posts(html: str) -> list[dict]:
     return posts
 
 
-def send_email(posts: list[dict]) -> None:
+def send_email(posts):
     notify_to = env("NOTIFY_EMAIL")
     smtp_host = env("SMTP_HOST")
     smtp_port = int(env("SMTP_PORT", "587"))
@@ -142,12 +144,12 @@ def send_email(posts: list[dict]) -> None:
         if not value
     ]
     if missing:
-        raise RuntimeError(f"Missing email config: {', '.join(missing)}")
+        raise RuntimeError("Missing email config: {}".format(", ".join(missing)))
 
     if len(posts) == 1:
-        subject = f"EA HUT forum: {posts[0]['title']}"
+        subject = "EA HUT forum: {}".format(posts[0]["title"])
     else:
-        subject = f"EA HUT forum: {len(posts)} new posts"
+        subject = "EA HUT forum: {} new posts".format(len(posts))
 
     lines = [
         "New post(s) on EA NHL 26 HUT forum:",
@@ -156,8 +158,8 @@ def send_email(posts: list[dict]) -> None:
         "",
     ]
     for post in posts:
-        lines.append(f"- {post['title']}")
-        lines.append(f"  {post['url']}")
+        lines.append("- {}".format(post["title"]))
+        lines.append("  {}".format(post["url"]))
         lines.append("")
 
     message = EmailMessage()
@@ -179,13 +181,13 @@ def send_email(posts: list[dict]) -> None:
             smtp.send_message(message)
 
 
-def run(*, init_only: bool, test_email: bool, dry_run: bool) -> int:
+def run(init_only=False, test_email=False, dry_run=False):
     load_dotenv(ENV_FILE)
 
     try:
         html = fetch_forum_html()
     except URLError as exc:
-        log(f"Failed to fetch forum page: {exc}")
+        log("Failed to fetch forum page: {}".format(exc))
         return 1
 
     posts = parse_posts(html)
@@ -199,11 +201,15 @@ def run(*, init_only: bool, test_email: bool, dry_run: bool) -> int:
     new_posts = [post for post in posts if post["id"] > last_seen_id]
     new_posts.sort(key=lambda post: post["id"])
 
-    log(f"Fetched {len(posts)} posts, newest id={newest_id}, last_seen_id={last_seen_id}")
+    log(
+        "Fetched {} posts, newest id={}, last_seen_id={}".format(
+            len(posts), newest_id, last_seen_id
+        )
+    )
 
     if test_email:
         sample = new_posts or posts[:1]
-        log(f"Sending test email about: {sample[0]['title']}")
+        log("Sending test email about: {}".format(sample[0]["title"]))
         send_email(sample)
         log("Test email sent.")
         return 0
@@ -215,13 +221,13 @@ def run(*, init_only: bool, test_email: bool, dry_run: bool) -> int:
                 "initialized_at": datetime.now(timezone.utc).isoformat(),
             }
         )
-        log(f"Initialized state at post id={newest_id} (no notifications sent).")
+        log("Initialized state at post id={} (no notifications sent).".format(newest_id))
         return 0
 
     if new_posts:
-        log(f"Found {len(new_posts)} new post(s).")
+        log("Found {} new post(s).".format(len(new_posts)))
         for post in new_posts:
-            log(f"  [{post['id']}] {post['title']}")
+            log("  [{}] {}".format(post["id"], post["title"]))
         if dry_run:
             log("Dry run: email not sent.")
         else:
@@ -239,7 +245,7 @@ def run(*, init_only: bool, test_email: bool, dry_run: bool) -> int:
     return 0
 
 
-def main() -> int:
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--init",

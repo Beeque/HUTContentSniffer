@@ -6,6 +6,14 @@ Monitored page:
 
 https://forums.ea.com/category/nhl-26-en/discussions/nhl-26-ultimate-team-en?messages.widget.messagelistfornodebyrecentactivitywidget-tab-main-sojpns-1=newest
 
+## Requirements
+
+Python **3.6+**. On Linux, use `python3` (not `python`, which is often Python 2).
+
+```bash
+python3 --version
+```
+
 ## Setup
 
 1. Copy config:
