@@ -40,6 +40,9 @@ POST_HREF_RE = re.compile(
 TITLE_RE = re.compile(
     r'data-testid="MessageSubject"[^>]*>.*?<a[^>]*>([\s\S]*?)</a>', re.I
 )
+COMMUNITY_MANAGER_RE = re.compile(
+    r'<span[^>]*>\s*Community Manager\s*</span>', re.I
+)
 
 
 def log(message):
@@ -84,6 +87,12 @@ def strip_html(text):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
 
 
+def is_content_manager_post(chunk, title):
+    if "Content" not in title:
+        return False
+    return bool(COMMUNITY_MANAGER_RE.search(chunk))
+
+
 def fetch_forum_html():
     request = Request(
         FORUM_URL,
@@ -116,6 +125,8 @@ def parse_posts(html):
 
         title_match = TITLE_RE.search(chunk)
         title = strip_html(title_match.group(1)) if title_match else path.rsplit("/", 2)[-2]
+        if not is_content_manager_post(chunk, title):
+            continue
         posts.append(
             {
                 "id": post_id,
@@ -152,12 +163,12 @@ def send_email(posts):
         raise RuntimeError("Missing email config: {}".format(", ".join(missing)))
 
     if len(posts) == 1:
-        subject = "EA HUT forum: {}".format(posts[0]["title"])
+        subject = "EA HUT Content: {}".format(posts[0]["title"])
     else:
-        subject = "EA HUT forum: {} new posts".format(len(posts))
+        subject = "EA HUT Content: {} new posts".format(len(posts))
 
     lines = [
-        "New post(s) on EA NHL 26 HUT forum:",
+        "New HUT Content post(s) on EA forum:",
         "",
         FORUM_URL,
         "",
@@ -197,7 +208,7 @@ def run(init_only=False, test_email=False, dry_run=False):
 
     posts = parse_posts(html)
     if not posts:
-        log("No posts found on forum page (HTML structure may have changed).")
+        log("No matching Content posts from Community Manager found.")
         return 1
 
     newest_id = posts[0]["id"]
@@ -207,7 +218,7 @@ def run(init_only=False, test_email=False, dry_run=False):
     new_posts.sort(key=lambda post: post["id"])
 
     log(
-        "Fetched {} posts, newest id={}, last_seen_id={}".format(
+        "Fetched {} matching posts, newest id={}, last_seen_id={}".format(
             len(posts), newest_id, last_seen_id
         )
     )
@@ -230,7 +241,7 @@ def run(init_only=False, test_email=False, dry_run=False):
         return 0
 
     if new_posts:
-        log("Found {} new post(s).".format(len(new_posts)))
+        log("Found {} new Content post(s).".format(len(new_posts)))
         for post in new_posts:
             log("  [{}] {}".format(post["id"], post["title"]))
         if dry_run:
@@ -239,7 +250,7 @@ def run(init_only=False, test_email=False, dry_run=False):
             send_email(new_posts)
             log("Notification email sent.")
     else:
-        log("No new posts.")
+        log("No new Content posts.")
 
     save_state(
         {

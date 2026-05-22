@@ -49,9 +49,10 @@ Example: check every 15 minutes.
 ## How it works
 
 - Fetches the forum page and parses post links from `<li class="...lia-panel-list-item...">` elements.
-- Tracks the highest seen post id in `state.json`.
-- Sends one email when new posts appear (with title + direct link for each new post).
-- First run (`--init` or missing `state.json`) only stores current posts, no notification.
+- Keeps only posts where the title contains **Content** and the author rank is **Community Manager**.
+- Tracks the highest seen matching post id in `state.json`.
+- Sends one email when new matching posts appear (with title + direct link for each).
+- First run (`--init` or missing `state.json`) only stores current matching posts, no notification.
 
 ## CLI
 
