@@ -37,7 +37,7 @@ FORUM_HEADERS = {
         "image/avif,image/webp,*/*;q=0.8"
     ),
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Encoding": "gzip, deflate",
     "Cache-Control": "no-cache",
     "Pragma": "no-cache",
     "Referer": "https://forums.ea.com/",
@@ -141,6 +141,13 @@ def debug_parse_stats(html):
     log("Debug: hut_posts={}".format(href_matches))
     log("Debug: title_has_Content={}".format(content_title_matches))
     log("Debug: community_manager={}".format(manager_matches))
+    if "cf-browser-verification" in html or "security verification" in html.lower():
+        log("Debug: page looks like a Cloudflare challenge, not forum HTML")
+
+
+def looks_like_cloudflare_challenge(html):
+    lowered = html.lower()
+    return "cf-browser-verification" in html or "security verification" in lowered
 
 
 def parse_posts(html):
@@ -270,8 +277,9 @@ def run(init_only=False, test_email=False, dry_run=False, debug=False):
     posts = parse_posts(html)
     if not posts:
         log("No matching Content posts from Community Manager found.")
-        if debug:
-            debug_parse_stats(html)
+        debug_parse_stats(html)
+        if looks_like_cloudflare_challenge(html):
+            log("Hint: received Cloudflare bot-check page instead of forum content.")
         return 1
 
     newest_id = posts[0]["id"]
