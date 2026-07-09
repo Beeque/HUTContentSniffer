@@ -10,8 +10,14 @@ https://forums.ea.com/category/nhl-26-en/discussions/nhl-26-ultimate-team-en?mes
 
 Python **3.6+**. On Linux, **`python` is often Python 2** — do not use it.
 
+Since July 2026, forums.ea.com sits behind a Cloudflare bot check that
+fingerprints the TLS handshake, so plain `urllib` gets HTTP 403. The script
+uses [curl_cffi](https://github.com/lexiforest/curl_cffi) to impersonate a
+real Chrome browser:
+
 ```bash
 python3 --version
+pip3 install --user curl_cffi
 chmod +x sniff
 ./sniff --init
 ```

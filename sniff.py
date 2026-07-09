@@ -19,8 +19,13 @@ import ssl
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+try:
+    from curl_cffi import requests as curl_requests
+except ImportError:
+    curl_requests = None
 
 FORUM_URL = (
     "https://forums.ea.com/category/nhl-26-en/discussions/nhl-26-ultimate-team-en"
@@ -272,6 +277,21 @@ def parse_posts(html):
 
 
 def fetch_forum_html():
+    # Cloudflare on forums.ea.com fingerprints the client TLS handshake
+    # (JA3/JA4), so plain urllib gets HTTP 403 regardless of headers.
+    # curl_cffi impersonates a real Chrome TLS+HTTP/2 fingerprint.
+    if curl_requests is not None:
+        response = curl_requests.get(FORUM_URL, impersonate="chrome", timeout=45)
+        if response.status_code != 200:
+            raise URLError(
+                "HTTP {} from forum (Cloudflare challenge?)".format(
+                    response.status_code
+                )
+            )
+        return response.text
+
+    log("Warning: curl_cffi not installed, falling back to urllib "
+        "(likely to be blocked by Cloudflare). Run: pip3 install --user curl_cffi")
     request = Request(FORUM_URL, headers=FORUM_HEADERS)
     with urlopen(request, timeout=45) as response:
         charset = response.headers.get_content_charset() or "utf-8"
@@ -366,8 +386,19 @@ def run(init_only=False, test_email=False, dry_run=False, debug=False):
 
     try:
         html = fetch_forum_html()
-    except URLError as exc:
+    except HTTPError as exc:
+        if exc.code == 403:
+            log("Failed to fetch forum page: HTTP 403 (Cloudflare bot check). "
+                "Install curl_cffi: pip3 install --user curl_cffi")
+        else:
+            log("Failed to fetch forum page: {}".format(exc))
+        return 1
+    except (URLError, OSError) as exc:
         log("Failed to fetch forum page: {}".format(exc))
+        return 1
+    except Exception as exc:
+        # curl_cffi raises its own exception types on network errors.
+        log("Failed to fetch forum page: {}: {}".format(type(exc).__name__, exc))
         return 1
 
     posts = parse_posts(html)
