@@ -17,10 +17,13 @@ real Chrome browser:
 
 ```bash
 python3 --version
-pip3 install --user curl_cffi
+python3 -m venv .venv          # on PEP 668 systems (e.g. kapsi); ./sniff picks it up automatically
+.venv/bin/pip install curl_cffi
 chmod +x sniff
 ./sniff --init
 ```
+
+If the system allows it, `pip3 install --user curl_cffi` works too (no venv needed).
 
 ## Setup
 
