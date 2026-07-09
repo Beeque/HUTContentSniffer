@@ -51,16 +51,23 @@ FORUM_HEADERS = {
 SCRIPT_DIR = Path(__file__).resolve().parent
 STATE_FILE = SCRIPT_DIR / "state.json"
 ENV_FILE = SCRIPT_DIR / ".env"
+BOARD_SLUG = "nhl-26-ultimate-team-en"
+COMMUNITY_MANAGER = "Community Manager"
 
+NEXT_DATA_RE = re.compile(
+    r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+    re.S,
+)
 LI_RE = re.compile(r"<li[^>]*lia-panel-list-item[^>]*>([\s\S]*?)</li>", re.I)
 POST_HREF_RE = re.compile(
-    r'href="(/discussions/nhl-26-ultimate-team-en/[^"]+/(\d+))"', re.I
+    r'href="(/discussions/' + BOARD_SLUG + r'/[^"]+/(\d+))"', re.I
 )
 TITLE_RE = re.compile(
     r'data-testid="MessageSubject"[^>]*>.*?<a[^>]*>([\s\S]*?)</a>', re.I
 )
 COMMUNITY_MANAGER_RE = re.compile(
-    r'<span[^>]*>\s*Community Manager\s*</span>', re.I
+    r"(?:<span[^>]*>\s*Community Manager\s*</span>|Rank:\s*Community Manager)",
+    re.I,
 )
 
 
@@ -112,45 +119,74 @@ def is_content_manager_post(chunk, title):
     return bool(COMMUNITY_MANAGER_RE.search(chunk))
 
 
-def fetch_forum_html():
-    request = Request(FORUM_URL, headers=FORUM_HEADERS)
-    with urlopen(request, timeout=45) as response:
-        charset = response.headers.get_content_charset() or "utf-8"
-        return response.read().decode(charset, errors="replace")
+def extract_next_data(html):
+    match = NEXT_DATA_RE.search(html)
+    if not match:
+        return None
+    try:
+        return json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
 
 
-def debug_parse_stats(html):
-    li_items = LI_RE.findall(html)
-    href_matches = 0
-    content_title_matches = 0
-    manager_matches = 0
+def author_rank_name(apollo_state, author):
+    rank = author.get("rank", {})
+    rank_ref = rank.get("__ref")
+    if rank_ref:
+        return apollo_state.get(rank_ref, {}).get("name", "")
+    return rank.get("name", "")
 
-    for chunk in li_items:
-        if not POST_HREF_RE.search(chunk):
+
+def post_url_for_id(html, post_id):
+    for href_match in POST_HREF_RE.finditer(html):
+        if int(href_match.group(2)) == post_id:
+            return "{}{}".format(BASE_URL, href_match.group(1))
+    return "{}/discussions/{}/-/{}".format(BASE_URL, BOARD_SLUG, post_id)
+
+
+def parse_posts_from_next_data(html):
+    data = extract_next_data(html)
+    if not data:
+        return []
+
+    apollo_state = data.get("props", {}).get("pageProps", {}).get("apolloState", {})
+    if not apollo_state:
+        return []
+
+    posts = []
+    seen_ids = set()
+    for key, message in apollo_state.items():
+        if not key.startswith("ForumTopicMessage:message:"):
             continue
-        href_matches += 1
-        title_match = TITLE_RE.search(chunk)
-        title = strip_html(title_match.group(1)) if title_match else ""
-        if "Content" in title:
-            content_title_matches += 1
-        if COMMUNITY_MANAGER_RE.search(chunk):
-            manager_matches += 1
 
-    log("Debug: html_bytes={}".format(len(html)))
-    log("Debug: panel_list_items={}".format(len(li_items)))
-    log("Debug: hut_posts={}".format(href_matches))
-    log("Debug: title_has_Content={}".format(content_title_matches))
-    log("Debug: community_manager={}".format(manager_matches))
-    if "cf-browser-verification" in html or "security verification" in html.lower():
-        log("Debug: page looks like a Cloudflare challenge, not forum HTML")
+        subject = message.get("subject", "")
+        if "Content" not in subject:
+            continue
+
+        author_ref = message.get("author", {}).get("__ref")
+        if not author_ref:
+            continue
+        author = apollo_state.get(author_ref, {})
+        if author_rank_name(apollo_state, author) != COMMUNITY_MANAGER:
+            continue
+
+        post_id = int(message.get("uid") or key.rsplit(":", 1)[-1])
+        if post_id in seen_ids:
+            continue
+        seen_ids.add(post_id)
+        posts.append(
+            {
+                "id": post_id,
+                "title": subject,
+                "url": post_url_for_id(html, post_id),
+            }
+        )
+
+    posts.sort(key=lambda post: post["id"], reverse=True)
+    return posts
 
 
-def looks_like_cloudflare_challenge(html):
-    lowered = html.lower()
-    return "cf-browser-verification" in html or "security verification" in lowered
-
-
-def parse_posts(html):
+def parse_posts_legacy_html(html):
     posts = []
     seen_ids = set()
 
@@ -180,6 +216,66 @@ def parse_posts(html):
 
     posts.sort(key=lambda post: post["id"], reverse=True)
     return posts
+
+
+def debug_parse_stats(html):
+    li_items = LI_RE.findall(html)
+    href_matches = 0
+    content_title_matches = 0
+    manager_matches = 0
+
+    for chunk in li_items:
+        if not POST_HREF_RE.search(chunk):
+            continue
+        href_matches += 1
+        title_match = TITLE_RE.search(chunk)
+        title = strip_html(title_match.group(1)) if title_match else ""
+        if "Content" in title:
+            content_title_matches += 1
+        if COMMUNITY_MANAGER_RE.search(chunk):
+            manager_matches += 1
+
+    next_data = extract_next_data(html)
+    next_posts = parse_posts_from_next_data(html) if next_data else []
+    page_props = (
+        next_data.get("props", {}).get("pageProps", {}) if next_data else {}
+    )
+
+    log("Debug: html_bytes={}".format(len(html)))
+    log("Debug: next_data={}".format("yes" if next_data else "no"))
+    log("Debug: forum_topic_messages_in_html={}".format(
+        html.count("ForumTopicMessage:message:")
+    ))
+    if page_props:
+        log("Debug: is_crawler={}".format(page_props.get("isCrawler")))
+    log("Debug: next_data_matching_posts={}".format(len(next_posts)))
+    log("Debug: panel_list_items={}".format(len(li_items)))
+    log("Debug: hut_posts={}".format(href_matches))
+    log("Debug: title_has_Content={}".format(content_title_matches))
+    log("Debug: community_manager={}".format(manager_matches))
+    if "cf-browser-verification" in html or "security verification" in html.lower():
+        log("Debug: page looks like a Cloudflare challenge, not forum HTML")
+    elif next_data and not next_posts and html.count("ForumTopicMessage:message:") == 0:
+        log("Hint: EA returned a shell page without embedded posts (common on datacenter IPs).")
+
+
+def looks_like_cloudflare_challenge(html):
+    lowered = html.lower()
+    return "cf-browser-verification" in html or "security verification" in lowered
+
+
+def parse_posts(html):
+    posts = parse_posts_from_next_data(html)
+    if posts:
+        return posts
+    return parse_posts_legacy_html(html)
+
+
+def fetch_forum_html():
+    request = Request(FORUM_URL, headers=FORUM_HEADERS)
+    with urlopen(request, timeout=45) as response:
+        charset = response.headers.get_content_charset() or "utf-8"
+        return response.read().decode(charset, errors="replace")
 
 
 def send_email(posts, test_mode=False):
