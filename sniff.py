@@ -276,19 +276,34 @@ def parse_posts(html):
     return parse_posts_legacy_html(html)
 
 
+IMPERSONATE_PROFILES = (
+    "chrome124",
+    "safari17_0",
+    "chrome131",
+    "chrome120",
+    "chrome",
+)
+
+
 def fetch_forum_html():
     # Cloudflare on forums.ea.com fingerprints the client TLS handshake
     # (JA3/JA4), so plain urllib gets HTTP 403 regardless of headers.
     # curl_cffi impersonates a real Chrome TLS+HTTP/2 fingerprint.
+    # Datacenter IPs may only pass with specific profiles; try fallbacks.
     if curl_requests is not None:
-        response = curl_requests.get(FORUM_URL, impersonate="chrome", timeout=45)
-        if response.status_code != 200:
-            raise URLError(
-                "HTTP {} from forum (Cloudflare challenge?)".format(
-                    response.status_code
-                )
+        last_status = None
+        for profile in IMPERSONATE_PROFILES:
+            response = curl_requests.get(
+                FORUM_URL, impersonate=profile, timeout=45
             )
-        return response.text
+            last_status = response.status_code
+            if response.status_code == 200:
+                if profile != IMPERSONATE_PROFILES[0]:
+                    log("Fetched forum page using impersonate={}".format(profile))
+                return response.text
+        raise URLError(
+            "HTTP {} from forum (Cloudflare challenge?)".format(last_status)
+        )
 
     log("Warning: curl_cffi not installed, falling back to urllib "
         "(likely to be blocked by Cloudflare). Run: pip3 install --user curl_cffi")
@@ -443,12 +458,13 @@ def run(init_only=False, test_email=False, dry_run=False, debug=False):
     else:
         log("No new Content posts.")
 
-    save_state(
-        {
-            "last_seen_id": max(newest_id, last_seen_id),
-            "checked_at": datetime.now(timezone.utc).isoformat(),
-        }
-    )
+    if not dry_run:
+        save_state(
+            {
+                "last_seen_id": max(newest_id, last_seen_id),
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
     return 0
 
 
