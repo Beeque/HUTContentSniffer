@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check EA NHL 26 HUT forum for new posts and send email alerts."""
+"""Check EA NHL 27 HUT forum for new posts and send email alerts."""
 
 import sys
 
@@ -28,7 +28,7 @@ except ImportError:
     curl_requests = None
 
 FORUM_URL = (
-    "https://forums.ea.com/category/nhl-26-en/discussions/nhl-26-ultimate-team-en"
+    "https://forums.ea.com/category/nhl-27-en/discussions/nhl-27-ultimate-team-en"
     "?messages.widget.messagelistfornodebyrecentactivitywidget-tab-main-sojpns-1=newest"
 )
 BASE_URL = "https://forums.ea.com"
@@ -56,7 +56,7 @@ FORUM_HEADERS = {
 SCRIPT_DIR = Path(__file__).resolve().parent
 STATE_FILE = SCRIPT_DIR / "state.json"
 ENV_FILE = SCRIPT_DIR / ".env"
-BOARD_SLUG = "nhl-26-ultimate-team-en"
+BOARD_SLUG = "nhl-27-ultimate-team-en"
 COMMUNITY_MANAGER = "Community Manager"
 
 NEXT_DATA_RE = re.compile(
