@@ -4,11 +4,11 @@ Persistent context for Cursor agents (Composer, etc.) working on this repo.
 
 ## What this project does
 
-Cron-friendly Python script that watches the EA NHL 26 HUT forum for new **Content** posts from **Community Manager** authors and sends email alerts.
+Cron-friendly Python script that watches the EA NHL 27 HUT forum for new **Content** posts from **Community Manager** authors and sends email alerts.
 
 Monitored URL (defined in `sniff.py` as `FORUM_URL`):
 
-https://forums.ea.com/category/nhl-26-en/discussions/nhl-26-ultimate-team-en?messages.widget.messagelistfornodebyrecentactivitywidget-tab-main-sojpns-1=newest
+https://forums.ea.com/category/nhl-27-en/discussions/nhl-27-ultimate-team-en?messages.widget.messagelistfornodebyrecentactivitywidget-tab-main-sojpns-1=newest
 
 Parsing: prefers `__NEXT_DATA__` / Apollo state JSON; falls back to legacy HTML regex parsing.
 

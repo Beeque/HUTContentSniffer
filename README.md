@@ -1,10 +1,10 @@
 # HUTContentSniffer
 
-Cron-friendly script that watches the EA NHL 26 HUT forum for new posts and sends email alerts.
+Cron-friendly script that watches the EA NHL 27 HUT forum for new posts and sends email alerts.
 
 Monitored page:
 
-https://forums.ea.com/category/nhl-26-en/discussions/nhl-26-ultimate-team-en?messages.widget.messagelistfornodebyrecentactivitywidget-tab-main-sojpns-1=newest
+https://forums.ea.com/category/nhl-27-en/discussions/nhl-27-ultimate-team-en?messages.widget.messagelistfornodebyrecentactivitywidget-tab-main-sojpns-1=newest
 
 ## Requirements
 
